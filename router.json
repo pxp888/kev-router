@@ -1,0 +1,42 @@
+{
+  "kev_url": "http://192.168.0.189:8008",
+  "kev_api_key": "hellothere",
+  "default_model": "llama3.1-8b",
+  "decision_prompt": "Which model is best suited for this request?",
+  "providers": [
+    {
+      "name": "ollama",
+      "base_url": "http://192.168.0.189:11434/v1",
+      "api_type": "openai-completions",
+      "api_key": "",
+      "models": [
+        {
+          "model_id": "llama3.1-8b",
+          "description": "Small fast general chat model: quick summaries, rewrites, simple classification and formatting",
+          "weight": 1.0,
+          "enabled": true
+        },
+        {
+          "model_id": "qwen2.5-coder-32b",
+          "description": "Code generation, refactoring, unit tests, and inline code completions",
+          "weight": 1.2,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "llamacpp",
+      "base_url": "http://127.0.0.1:8080/v1",
+      "api_type": "openai-completions",
+      "api_key": "",
+      "models": [
+        {
+          "model_id": "deepseek-r1-14b",
+          "description": "Complex multi-step reasoning, architecture design, and hard debugging",
+          "weight": 0.9,
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

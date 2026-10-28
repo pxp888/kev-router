@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang=en>
+<head>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>local router</title>
+<style>
+:root{color-scheme:dark}
+body{margin:0;padding:24px;font:14px/1.5 system-ui,sans-serif;background:#101317;color:#e8eaed}
+main{max-width:900px;margin:0 auto;display:grid;gap:16px}
+h1{margin:0;font-size:20px}
+.sub{color:#98a2ad;font-size:13px}
+.panel{background:#171b21;border:1px solid #262c34;border-radius:10px;padding:16px 18px}
+.panel h3{margin:0 0 2px;font-size:15px}
+.note{margin:0 0 12px;color:#98a2ad;font-size:13px}
+label{display:block;margin:10px 0 4px;font-size:12px;color:#98a2ad}
+input,select,textarea{width:100%;box-sizing:border-box;padding:7px 8px;font:inherit;color:#e8eaed;background:#0d1014;border:1px solid #2b323b;border-radius:6px}
+textarea{min-height:62px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.models{display:grid;gap:8px;margin-top:12px;padding-top:12px;border-top:1px dashed #2b323b}
+.model{border:1px solid #2b323b;border-radius:8px;padding:10px}
+.grid3{display:grid;grid-template-columns:1fr 100px 84px 30px;gap:8px;align-items:end}
+button{padding:6px 10px;font:inherit;border:1px solid #2b323b;border-radius:6px;background:#0d1014;color:#e8eaed;cursor:pointer}
+button.primary{background:#2f6feb;border-color:#2f6feb;font-weight:600}
+button.small{padding:4px 8px;font-size:12px}
+button.danger{color:#ff8a8a}
+button.ghost{background:transparent;border-style:dashed}
+details{border:1px solid #2b323b;border-radius:8px;padding:8px 12px;margin-bottom:10px;background:#12161b}
+summary{cursor:pointer;font-weight:600}
+.enabled{display:flex;align-items:center;gap:6px;font-size:12px;color:#98a2ad}
+.enabled input{width:auto}
+.alert{padding:9px 12px;border-radius:8px;font-size:13px}
+.alert.err{background:#2d1418;border:1px solid #6b2229;color:#ffb3ba}
+.alert.ok{background:#122617;border:1px solid #24572f;color:#9be0a8}
+code{background:#0d1014;padding:2px 6px;border-radius:5px}
+.count{font-size:12px;color:#98a2ad;text-align:right}
+.top{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+</style>
+</head>
+<body>
+<main>
+  <div class=top>
+    <h1>local router</h1>
+    <span class=sub id=health>loading…</span>
+  </div>
+
+  <section class=panel>
+    <h3>Request path</h3>
+    <p class=note>Point any OpenAI-compatible client at the base URL below and send <code>model: "auto"</code> — Kev scores your model descriptions, the winner answers, the reply streams back.</p>
+    <code id=endpoint></code> <button class="small ghost" id=copy>Copy</button>
+  </section>
+
+  <section class=panel>
+    <h3>Kev decision endpoint</h3>
+    <p class=note>The System One server asked to pick models. Saved into router.json.</p>
+    <div class=row>
+      <div><label for=kev_url>Base URL</label><input id=kev_url data-field=kev_url></div>
+      <div><label for=kev_api_key>API key</label><input id=kev_api_key data-field=kev_api_key type=password autocomplete=off></div>
+    </div>
+    <button class="small ghost" data-action=clear-kev-key>Clear Kev key</button>
+  </section>
+
+  <section class=panel>
+    <h3>Kev decision prompt</h3>
+    <p class=note>The question Kev is asked when it picks a model. Reword it to steer routing towards cost, latency or code quality without touching your model descriptions.</p>
+    <textarea id=prompt data-field=decision_prompt></textarea>
+    <div class=count id=prompt_count></div>
+    <button class="small ghost" data-action=reset-prompt>Reset to default</button>
+  </section>
+
+  <section class=panel>
+    <h3>Upstream providers</h3>
+    <p class=note id=prov_summary></p>
+    <div id=providers></div>
+    <button class="small ghost" data-action=add-provider>+ Add provider</button>
+  </section>
+
+  <section class=panel>
+    <h3>Default fallback model</h3>
+    <p class=note>If Kev cannot be reached, requests go here instead.</p>
+    <select id=fallback data-field=default_model></select>
+  </section>
+
+  <div id=alert></div>
+  <button class=primary id=save>Save settings</button>
+</main>
+
+<script>
+const DEF_PROMPT = 'Which model is best suited for this request?';
+const $ = s => document.querySelector(s);
+let cfg = { providers: [] };
+const newId = p => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const alertBox = (type, text) => { $('#alert').innerHTML = text ? `<div class="alert ${type}">${esc(text)}</div>` : ''; };
+
+function emptyModel() { return { id: newId('model'), model_id: '', description: '', weight: 1.0, enabled: true }; }
+function emptyProvider() { return { id: newId('prov'), name: '', base_url: 'http://', api_type: 'openai-completions', api_key: '', api_key_masked: '', models: [emptyModel()] }; }
+
+async function load() {
+  const r = await fetch('/config');
+  cfg = await r.json();
+  cfg.providers = cfg.providers || [];
+  render();
+  health();
+}
+
+async function health() {
+  try {
+    const h = await (await fetch('/health')).json();
+    $('#health').textContent = `Kev ${h.kev_up === true ? 'up' : 'unreachable'} · ${h.models.length} models`;
+  } catch { $('#health').textContent = 'router unreachable'; }
+}
+
+function render() { renderKev(); renderPrompt(); renderProviders(); renderFallback(); }
+
+function renderKev() {
+  $('#kev_url').value = cfg.kev_url || '';
+  $('#kev_api_key').value = '';
+  $('#kev_api_key').placeholder = cfg.kev_api_key_masked || 'none set';
+}
+
+function renderPrompt() {
+  $('#prompt').value = cfg.decision_prompt || DEF_PROMPT;
+  $('#prompt_count').textContent = `${($('#prompt').value).length}/500 characters`;
+}
+
+function renderProviders() {
+  $('#prov_summary').textContent = `${cfg.providers.length} provider${cfg.providers.length === 1 ? '' : 's'} · ` +
+    `${cfg.providers.reduce((n, p) => n + p.models.length, 0)} models`;
+  $('#providers').innerHTML = cfg.providers.map((p, pi) => `
+    <details ${p.api_key_masked ? '' : 'open'}>
+      <summary>${esc(p.name) || 'New provider'} ${p.api_key_masked ? '· key set' : ''}</summary>
+      <div class=row>
+        <div><label>Provider name</label><input data-pi=${pi} data-field=name value="${esc(p.name)}" placeholder="e.g. ollama"></div>
+        <div><label>API type</label><select data-pi=${pi} data-field=api_type>
+          ${['openai-completions', 'openai-legacy-completions'].map(t => `<option value=${t} ${p.api_type === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select></div>
+      </div>
+      <label>Base URL</label><input data-pi=${pi} data-field=base_url value="${esc(p.base_url)}" placeholder="http://127.0.0.1:11434/v1">
+      <label>Provider API key</label>
+      <input data-pi=${pi} data-field=api_key type=password autocomplete=off value="" placeholder="${esc(p.api_key_masked) || 'none set'}">
+      ${p.api_key_masked ? `<button class="small ghost" data-action=clear-key data-pi=${pi}>Clear key</button>` : ''}
+      <div class=models>
+        ${p.models.map((m, mi) => `
+          <div class=model>
+            <div class=grid3>
+              <div><label>Model ID</label><input data-pi=${pi} data-mi=${mi} data-field=model_id value="${esc(m.model_id)}" placeholder="e.g. llama3.1-8b"></div>
+              <div><label>Weight</label><input data-pi=${pi} data-mi=${mi} data-field=weight type=number step=0.1 min=0 value="${esc(m.weight)}"></div>
+              <div class=enabled><input data-pi=${pi} data-mi=${mi} data-field=enabled type=checkbox ${m.enabled ? 'checked' : ''}> Enabled</div>
+              <button class=small data-action=del-model data-pi=${pi} data-mi=${mi} title="Delete model">×</button>
+            </div>
+            <label>Routing description (for Kev)</label>
+            <textarea data-pi=${pi} data-mi=${mi} data-field=description placeholder="Describe what tasks this model should handle…">${esc(m.description)}</textarea>
+          </div>`).join('')}
+      </div>
+      <button class="small ghost" data-action=add-model data-pi=${pi}>+ Add model</button>
+      <button class="small danger" data-action=del-provider data-pi=${pi}>Delete provider</button>
+    </details>`).join('');
+}
+
+function renderFallback() {
+  const all = cfg.providers.flatMap(p => p.models.map(m => m.model_id).filter(Boolean));
+  const cur = cfg.default_model || '';
+  $('#fallback').innerHTML = `<option value="">-- Select a configured model --</option>` +
+    all.map(id => `<option value="${esc(id)}" ${id === cur ? 'selected' : ''}>${esc(id)}</option>`).join('');
+  if (!all.includes(cur)) cfg.default_model = '';
+}
+
+$('#providers').addEventListener('input', e => {
+  const { pi, mi, field } = e.target.dataset;
+  if (!field) return;
+  const p = cfg.providers[+pi];
+  if (mi === undefined) { p[field] = e.target.value; if (field === 'name') { const s = document.querySelectorAll('#providers details summary')[pi]; s.textContent = (e.target.value || 'New provider') + (p.api_key_masked ? ' · key set' : ''); } return; }
+  const m = p.models[+mi];
+  m[field] = field === 'weight' ? parseFloat(e.target.value) : (field === 'enabled' ? e.target.checked : e.target.value);
+  if (field === 'model_id') renderFallback();
+});
+
+document.addEventListener('input', e => {
+  const field = e.target.dataset.field;
+  if (!field || e.target.dataset.pi !== undefined) return;
+  cfg[field] = e.target.value;
+  if (field === 'decision_prompt') $('#prompt_count').textContent = `${e.target.value.length}/500 characters`;
+});
+
+document.addEventListener('change', e => {
+  if (e.target.id === 'fallback') cfg.default_model = e.target.value;
+  if (e.target.dataset.field === 'api_type') cfg.providers[+e.target.dataset.pi].api_type = e.target.value;
+});
+
+document.addEventListener('click', e => {
+  const action = e.target.dataset.action;
+  if (!action) return;
+  const pi = +e.target.dataset.pi;
+  if (action === 'add-provider') cfg.providers.push(emptyProvider());
+  else if (action === 'del-provider') cfg.providers.splice(pi, 1);
+  else if (action === 'add-model') cfg.providers[pi].models.push(emptyModel());
+  else if (action === 'del-model') {
+    const p = cfg.providers[pi];
+    p.models.splice(+e.target.dataset.mi, 1);
+    if (!p.models.length) p.models.push(emptyModel());
+  } else if (action === 'clear-key') { const p = cfg.providers[pi]; p.api_key_masked = ''; p.api_key = ''; p.cleared = true; }
+  else if (action === 'clear-kev-key') { cfg.kev_api_key_masked = ''; cfg.kev_api_key = ''; cfg.clear_kev_api_key = true; }
+  else if (action === 'reset-prompt') cfg.decision_prompt = DEF_PROMPT;
+  else return;
+  render();
+});
+
+$('#copy').addEventListener('click', () => navigator.clipboard.writeText($('#endpoint').textContent));
+
+$('#save').addEventListener('click', async () => {
+  alertBox('', '');
+  const payload = {
+    kev_url: cfg.kev_url,
+    kev_api_key: cfg.kev_api_key && cfg.kev_api_key.trim() ? cfg.kev_api_key.trim() : null,
+    clear_kev_api_key: Boolean(cfg.clear_kev_api_key),
+    default_model: cfg.default_model,
+    decision_prompt: (cfg.decision_prompt || '').trim(),
+    providers: cfg.providers.map(p => ({
+      id: p.id, name: (p.name || '').trim(), base_url: (p.base_url || '').trim(), api_type: p.api_type,
+      api_key: p.api_key && p.api_key.trim() ? p.api_key.trim() : null,
+      clear_api_key: Boolean(p.cleared),
+      models: p.models.map(m => ({
+        id: m.id, model_id: (m.model_id || '').trim(), description: (m.description || '').trim(),
+        weight: Number.isFinite(parseFloat(m.weight)) ? parseFloat(m.weight) : 1.0,
+        enabled: Boolean(m.enabled)
+      }))
+    }))
+  };
+  const r = await fetch('/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) return alertBox('err', data.detail || 'Failed to save router settings.');
+  cfg = data.config;
+  cfg.providers.forEach(p => { p.cleared = false; });
+  cfg.clear_kev_api_key = false;
+  render();
+  alertBox('ok', 'Router settings saved. Routing picks up the change on the next request.');
+});
+
+$('#endpoint').textContent = location.origin + '/v1';
+load();
+</script>
+</body>
+</html>
