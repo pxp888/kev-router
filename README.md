@@ -14,6 +14,10 @@ client -> POST /v1/chat/completions (model: "auto")
        -> forward to that provider, stream the answer back
 ```
 
+
+![Screenshot](assets/screenshot.webp)
+
+
 ## Run
 
 ```bash
