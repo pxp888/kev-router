@@ -57,12 +57,25 @@ edit and re-request without restarting.
 - `weight` — multiplier on Kev's probability. 1.0 neutral, >1 favour, <1 discourage.
 - `default_model` — used when Kev is unreachable or returns garbage.
 - `decision_prompt` — reword the question to steer routing (cost, latency, code quality).
+- `api_type` — which protocol the upstream speaks: `openai-completions` (default),
+  `openai-legacy-completions`, `anthropic-messages`, `google-gemini`. Requests arrive as
+  OpenAI chat and get converted both ways (tools, images, thinking, SSE). Auth header per
+  type: `Authorization: Bearer`, `x-api-key` + `anthropic-version`, `x-goog-api-key`.
+  `api_type` is also inferred from `base_url` (`api.anthropic.com` → anthropic,
+  `generativelanguage.googleapis.com` → gemini), so a Google/Anthropic provider works even
+  with the field left at the default. Anthropic gets `max_tokens: 4096` when you omit it.
+  ```json
+  {"name": "anthropic", "base_url": "https://api.anthropic.com", "api_type": "anthropic-messages",
+   "api_key": "sk-ant-...", "models": [{"model_id": "claude-3-5-sonnet-latest",
+     "description": "hard reasoning, architecture, long code edits", "weight": 1.2, "enabled": true}]}
+  ```
 - Duplicate `model_id` across providers: second one gets option key `provider:model`.
 
 ## Checks
 
 ```bash
-python3 selfcheck.py     # state building, weight flipping, fallback, URL resolution, config validation/key masking
+python3 selfcheck.py     # state building, weight flipping, fallback, URL/header resolution,
+                         # config validation/key masking, anthropic + gemini adapters and SSE translation
 ```
 
 ```bash
@@ -76,11 +89,10 @@ Config POST accepts the same payload the deployed AutobotTab sends: `api_key: nu
 
 ## What is not here
 
-- Upstream adapters for Anthropic (`/v1/messages`) and Google Gemini. Only
-  `openai-completions` / `openai-legacy-completions` upstreams work (Ollama, llama.cpp,
-  vLLM, LM Studio, OpenAI). If you need them, the self-contained adapters in
-  `autobot.py` (`openai_to_anthropic_request`, `anthropic_to_openai_response`,
-  `_AnthropicStreamTranslator`, and the Gemini equivalents) copy over as-is.
+- Client-side Anthropic format: the router only accepts OpenAI-shaped requests. There is no
+  `/v1/messages` route for Claude-Code-style clients (the deployed router has one), and a
+  legacy `/v1/completions` body (`prompt: "..."`) is forwarded as-is, so it is not adapted
+  for an Anthropic/Gemini provider — use `/v1/chat/completions` with those providers.
 - Accounts, API-key auth on the router, request quotas, token stats in a database, and
   the `auto.thinkfarm.eu` host rewrite. `GET /v1/models` advertises only `auto`.
 - The webui has no "Router activation" toggle (no quotas locally) and no Routing

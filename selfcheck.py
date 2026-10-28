@@ -1,6 +1,7 @@
 """Self-check for router.py logic (no network, no upstream needed): python3 selfcheck.py"""
 import asyncio
 import copy
+import json
 
 import router
 
@@ -126,10 +127,132 @@ def check_config():
     assert masked["kev_api_key"] == "" and masked["kev_api_key_masked"].endswith("vkey")
 
 
+def check_adapters():
+    prov = lambda base, api=None: {"base_url": base, "api_type": api or "openai-completions", "api_key": "k"}
+
+    # protocol pick, including auto-detection from base_url
+    assert router.resolve_effective_api_type(prov("http://h/v1")) == "openai-completions"
+    assert router.resolve_effective_api_type(prov("https://api.anthropic.com")) == "anthropic-messages"
+    assert router.resolve_effective_api_type(prov("https://generativelanguage.googleapis.com/v1beta")) == "google-gemini"
+
+    assert router.resolve_upstream_url(prov("https://api.anthropic.com/v1", "anthropic-messages"), "chat/completions", "claude") \
+        == "https://api.anthropic.com/v1/messages"
+    assert router.resolve_upstream_url(prov("https://api.anthropic.com", "anthropic-messages"), None, "claude") \
+        == "https://api.anthropic.com/v1/messages"
+    assert router.resolve_upstream_url(prov("https://gen.example/v1beta/openai/chat/completions", "google-gemini"),
+                                       None, "models/gemini-2.5-flash", True) \
+        == "https://gen.example/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"
+    assert router.resolve_upstream_url(prov("https://gen.example", "google-gemini"), None, "gemini") \
+        == "https://gen.example/v1beta/models/gemini:generateContent"
+    assert router.resolve_upstream_headers(prov("x", "anthropic-messages"))["x-api-key"] == "k"
+    assert router.resolve_upstream_headers(prov("x", "google-gemini"))["x-goog-api-key"] == "k"
+    assert router.resolve_upstream_headers(prov("x")).get("authorization") == "Bearer k"
+
+    openai_body = {
+        "model": "ignored", "max_tokens": 321, "temperature": 0.2,
+        "messages": [
+            {"role": "system", "content": "be terse"},
+            {"role": "user", "content": [{"type": "text", "text": "look at this"},
+                                         {"type": "image_url", "image_url": {"url": "data:image/png;base64,QUJD"}}]},
+            {"role": "assistant", "content": None,
+             "tool_calls": [{"id": "call_1", "type": "function",
+                             "function": {"name": "lookup", "arguments": "{\"q\": \"x\"}"}}]},
+            {"role": "tool", "tool_call_id": "call_1", "name": "lookup", "content": "{\"hit\": 7}"},
+            {"role": "user", "content": "answer now"},
+        ],
+        "tools": [{"type": "function", "function": {"name": "lookup", "description": "d",
+                                                    "parameters": {"type": "object", "properties": {"q": {"type": "string"}}}}}],
+        "tool_choice": "required",
+    }
+
+    anth = router.openai_to_anthropic_request(openai_body, "claude-x")
+    assert anth["model"] == "claude-x" and anth["max_tokens"] == 321 and anth["system"] == "be terse"
+    assert anth["messages"][0]["role"] == "user"
+    assert anth["messages"][0]["content"][1] == {"type": "image",
+                                                  "source": {"type": "base64", "media_type": "image/png", "data": "QUJD"}}
+    assert anth["messages"][1]["content"][0]["type"] == "tool_use" \
+        and anth["messages"][1]["content"][0]["input"] == {"q": "x"}
+    assert anth["messages"][2]["content"][0]["type"] == "tool_result" \
+        and anth["messages"][2]["content"][0]["tool_use_id"] == "call_1"
+    assert anth["tools"][0]["input_schema"]["properties"]["q"]["type"] == "string"
+    assert anth["tool_choice"] == {"type": "any"}
+    minimal = router.openai_to_anthropic_request({"messages": [{"role": "user", "content": "hi"}]}, "m")
+    assert isinstance(minimal["max_tokens"], int) and minimal["max_tokens"] > 0, "anthropic needs an explicit max_tokens"
+
+    anth_reply = {"id": "msg_1", "model": "claude-x", "stop_reason": "tool_use",
+                  "usage": {"input_tokens": 11, "output_tokens": 5},
+                  "content": [{"type": "thinking", "thinking": "hmm"},
+                              {"type": "text", "text": "answer"},
+                              {"type": "tool_use", "id": "call_9", "name": "lookup", "input": {"q": "y"}}]}
+    oai = router.anthropic_to_openai_response(anth_reply, "claude-x")
+    assert oai["choices"][0]["message"]["content"] == "answer"
+    assert oai["choices"][0]["message"]["reasoning_content"] == "hmm"
+    assert oai["choices"][0]["message"]["tool_calls"][0]["function"] == {"name": "lookup", "arguments": '{"q": "y"}'}
+    assert oai["choices"][0]["finish_reason"] == "tool_calls" and oai["usage"]["total_tokens"] == 16
+
+    gem = router.openai_to_gemini_request(openai_body)
+    assert gem["systemInstruction"]["parts"][0]["text"] == "be terse"
+    assert gem["contents"][0]["role"] == "user"
+    assert any("inlineData" in p for p in gem["contents"][0]["parts"]), "image dropped in gemini request"
+    assert gem["contents"][1]["role"] == "model" and gem["contents"][1]["parts"][0]["functionCall"]["args"] == {"q": "x"}
+    assert gem["contents"][2]["parts"][0]["functionResponse"]["response"] == {"hit": 7}
+    assert gem["tools"][0]["functionDeclarations"][0]["parameters"]["properties"]["q"]["type"] == "string"
+
+    gem_reply = {"responseId": "r1", "usageMetadata": {"promptTokenCount": 8, "candidatesTokenCount": 4},
+                 "candidates": [{"content": {"parts": [{"text": "thinking", "thought": True},
+                                                       {"text": "final"},
+                                                       {"functionCall": {"name": "lookup", "args": {"q": "z"}}}]},
+                                 "finishReason": "MAX_TOKENS"}]}
+    oai = router.gemini_to_openai_response(gem_reply, "gemini-x")
+    assert oai["choices"][0]["message"]["content"] == "final"
+    assert oai["choices"][0]["message"]["reasoning_content"] == "thinking"
+    assert oai["choices"][0]["message"]["tool_calls"][0]["function"]["name"] == "lookup"
+    assert oai["choices"][0]["finish_reason"] == "tool_calls" and oai["usage"]["total_tokens"] == 12
+    assert router.gemini_to_openai_response(
+        {"candidates": [{"content": {"parts": [{"text": "cut off"}]}, "finishReason": "MAX_TOKENS"}]}, "g"
+    )["choices"][0]["finish_reason"] == "length"
+
+    def drain(translator, sse):
+        out = []
+        for line in sse.splitlines():
+            out += translator.feed_line(line)
+        out += translator.finalize()
+        return [json.loads(c.decode().removeprefix("data: ").strip()) for c in out if b"[DONE]" not in c]
+
+    anth_stream = """event: message_start
+data: {"type":"message_start","message":{"id":"msg_7","usage":{"input_tokens":10}}}
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" world"}}
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":3}}
+event: message_stop
+data: {"type":"message_stop"}
+"""
+    chunks = drain(router._AnthropicStreamTranslator("claude-x"), anth_stream)
+    assert "".join(c["choices"][0]["delta"].get("content") or "" for c in chunks) == "Hello world"
+    assert chunks[0]["choices"][0]["delta"]["role"] == "assistant"
+    assert chunks[-1]["choices"][0]["finish_reason"] == "length" and chunks[-1]["usage"]["completion_tokens"] == 3
+
+    gem_stream = """data: {"candidates":[{"content":{"parts":[{"text":"Hi"}]}}]}
+data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"lookup","args":{"q":"w"}}}]},"finishReason":"STOP"}]}
+"""
+    chunks = drain(router._GeminiStreamTranslator("gemini-x"), gem_stream)
+    assert "".join(c["choices"][0]["delta"].get("content") or "" for c in chunks) == "Hi"
+    assert any("tool_calls" in c["choices"][0]["delta"] for c in chunks)
+    assert chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
+
+
 if __name__ == "__main__":
     check_state()
     check_candidates()
     check_url_resolution()
+    check_adapters()
     check_config()
     asyncio.run(check_decision())
     print("selfcheck OK")
