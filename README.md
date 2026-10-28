@@ -15,7 +15,7 @@ client -> POST /v1/chat/completions (model: "auto")
 ```
 
 
-![Screenshot](assets/screenshot.webp)
+![Screenshot](assets/screenshot2.webp)
 
 
 ## Run
