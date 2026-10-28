@@ -78,6 +78,21 @@ edit and re-request without restarting.
   ```
 - Duplicate `model_id` across providers: second one gets option key `provider:model`.
 
+## Routing statistics
+
+The webui shows the deployed per-model table (Requests, Est. input tokens, Est. output tokens,
+Total, Reset with confirm step) so you can see where routing actually landed. Counts are memory
+only: a restart clears them, nothing is written to disk.
+
+```bash
+curl -s localhost:8010/stats | python3 -m json.tool    # {"ollama / small-fast": {"requests": 1, ...}}
+curl -s -X POST localhost:8010/stats/reset             # clear the table
+```
+
+Estimates use the deployed rule: `ceil(chars / 4)` over flattened text (tool JSON included),
++1000 per attached image. Only successful upstream answers count. Unlike the deployed router,
+Kev-fallback picks are counted too — locally they are still routed traffic.
+
 ## Checks
 
 ```bash
@@ -102,5 +117,4 @@ Config POST accepts the same payload the deployed AutobotTab sends: `api_key: nu
   for an Anthropic/Gemini provider — use `/v1/chat/completions` with those providers.
 - Accounts, API-key auth on the router, request quotas, token stats in a database, and
   the `auto.thinkfarm.eu` host rewrite. `GET /v1/models` advertises only `auto`.
-- The webui has no "Router activation" toggle (no quotas locally) and no Routing
-  statistics table (nothing records per-model token counts).
+- The webui has no "Router activation" toggle (there are no quotas locally).

@@ -124,6 +124,33 @@
     </div>
 
   </form>
+
+  <section class="autobot-stats-section">
+    <div class="autobot-stats-topbar">
+      <div class="autobot-stats-topbar-title">
+        <h2>Routing statistics</h2>
+        <span class="autobot-stats-topbar-sub">
+          Per model since the router started · tokens estimated from character count (4 characters per token)
+        </span>
+      </div>
+      <div class="autobot-stats-confirm" id=stats_actions></div>
+    </div>
+
+    <div class="autobot-stats-table-wrap">
+      <table class="autobot-stats-table">
+        <thead>
+          <tr>
+            <th scope=col>Model</th>
+            <th scope=col class=num>Requests</th>
+            <th scope=col class=num>Est. input tokens</th>
+            <th scope=col class=num>Est. output tokens</th>
+          </tr>
+        </thead>
+        <tbody id=stats_body></tbody>
+        <tfoot id=stats_foot></tfoot>
+      </table>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -147,6 +174,7 @@ const CHEVRON = `<svg class="autobot-accordion-chevron" width="18" height="18" v
 
 let cfg = { providers: [] };
 let expanded = {};
+let stats = {}, statsRows = [], confirmingStats = false;
 
 const createEmptyModel = () => ({ id: newId('model'), model_id: '', description: '', weight: 1.0, enabled: true });
 const createEmptyProvider = () => ({ id: newId('prov'), name: '', base_url: 'http://', api_type: 'openai-completions', api_key: '', api_key_masked: '', editing_key: true, models: [createEmptyModel()] });
@@ -189,6 +217,7 @@ async function load() {
   expanded = Object.fromEntries(cfg.providers.map(p => [p.id, !p.api_key_masked]));
   render();
   health();
+  loadStats();
 }
 
 async function health() {
@@ -197,6 +226,75 @@ async function health() {
     $('#kev_status').textContent = h.kev_up === true ? `Decision service reachable · ${h.models.length} models configured`
       : 'Decision service unreachable — requests use the fallback model';
   } catch { $('#kev_status').textContent = 'router unreachable'; }
+}
+
+async function loadStats() {
+  try { stats = (await (await fetch('/stats')).json()).stats || {}; } catch { stats = {}; }
+  renderStats();
+}
+
+// Same row building as AutobotTab: configured models first, then any recorded key they do not cover
+function buildStatsRows() {
+  const rowMap = new Map();
+  for (const p of cfg.providers) {
+    for (const m of p.models) {
+      if (!m.model_id) continue;
+      const key = `${p.name} / ${m.model_id}`;
+      const s = stats[key] || stats[m.model_id] || {};
+      rowMap.set(key, { key, model_id: m.model_id, provider_name: p.name,
+        requests: Number(s.requests || 0), est_input_tokens: Number(s.est_input_tokens || 0),
+        est_output_tokens: Number(s.est_output_tokens || 0) });
+    }
+  }
+  for (const [rawKey, val] of Object.entries(stats)) {
+    if (!val || typeof val !== 'object' || rowMap.has(rawKey)) continue;
+    if ([...rowMap.values()].some(r => r.model_id === rawKey)) continue;
+    let provider_name = '', model_id = rawKey;
+    if (rawKey.includes(' / ')) {
+      const parts = rawKey.split(' / ');
+      provider_name = parts[0].trim();
+      model_id = parts.slice(1).join(' / ').trim();
+    }
+    rowMap.set(rawKey, { key: rawKey, model_id, provider_name,
+      requests: Number(val.requests || 0), est_input_tokens: Number(val.est_input_tokens || 0),
+      est_output_tokens: Number(val.est_output_tokens || 0) });
+  }
+  return [...rowMap.values()];
+}
+
+function renderStatsActions() {
+  const hasTraffic = Object.keys(stats).length > 0 &&
+    statsRows.some(r => r.requests || r.est_input_tokens || r.est_output_tokens);
+  $('#stats_actions').innerHTML = confirmingStats
+    ? `<p>Clear every request and token count in this table? This cannot be undone.</p>
+       <button type=button class="autobot-btn outline small" data-action=cancel-reset>Cancel</button>
+       <button type=button class="autobot-btn danger-ghost" data-action=confirm-reset>Reset statistics</button>`
+    : `<button type=button class="autobot-btn outline small" data-action=refresh-stats>Refresh</button>
+       <button type=button class="autobot-btn outline small" data-action=reset-stats ${hasTraffic ? '' : 'disabled'}>Reset statistics</button>`;
+}
+
+function renderStats() {
+  statsRows = buildStatsRows();
+  const n = v => Number(v).toLocaleString();
+  $('#stats_body').innerHTML = statsRows.length === 0
+    ? '<tr class="autobot-stats-empty-row"><td colSpan=4>No routed traffic recorded yet.</td></tr>'
+    : statsRows.map(r => `<tr>
+        <td><div class="autobot-stats-model-cell">
+          <span class="autobot-stats-model-name">${esc(r.model_id)}</span>
+          ${r.provider_name ? `<span class="autobot-stats-provider-tag">${esc(r.provider_name)}</span>` : ''}
+        </div></td>
+        <td class=num data-label="Requests">${n(r.requests)}</td>
+        <td class=num data-label="Est. input tokens">${n(r.est_input_tokens)}</td>
+        <td class=num data-label="Est. output tokens">${n(r.est_output_tokens)}</td>
+      </tr>`).join('');
+  const totals = statsRows.reduce((a, r) => ({ requests: a.requests + r.requests,
+    input: a.input + r.est_input_tokens, output: a.output + r.est_output_tokens }), { requests: 0, input: 0, output: 0 });
+  $('#stats_foot').innerHTML = statsRows.length > 0
+    ? `<tr><th scope=row>Total</th>
+       <td class=num data-label="Requests">${n(totals.requests)}</td>
+       <td class=num data-label="Est. input tokens">${n(totals.input)}</td>
+       <td class=num data-label="Est. output tokens">${n(totals.output)}</td></tr>` : '';
+  renderStatsActions();
 }
 
 function render() {
@@ -356,11 +454,22 @@ document.addEventListener('change', e => {
   if (e.target.dataset.field === 'api_type') cfg.providers[+e.target.dataset.pi].api_type = e.target.value;
 });
 
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const btn = e.target.closest('button');
   if (!btn) return;
   const action = btn.dataset.action;
   const pi = +btn.dataset.pi;
+  if (action === 'refresh-stats') return loadStats();
+  if (action === 'reset-stats') { confirmingStats = true; return renderStatsActions(); }
+  if (action === 'cancel-reset') { confirmingStats = false; return renderStatsActions(); }
+  if (action === 'confirm-reset') {
+    confirmingStats = false;
+    const r = await fetch('/stats/reset', { method: 'POST' });
+    if (!r.ok) return setAlert('error', 'Unable to reset routing statistics.');
+    stats = {};
+    renderStats();
+    return setAlert('success', 'Routing statistics cleared.');
+  }
   if (action === 'toggle-provider') {
     const p = cfg.providers[pi];
     const open = expanded[p.id] === false;

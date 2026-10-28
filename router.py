@@ -1515,6 +1515,8 @@ async def forward(body: dict, cand: tuple, endpoint_suffix: str | None):
     else:
         fwd_body = {**body, "model": model_id}
 
+    est_input = estimate_input_tokens(body)
+
     if not body.get("stream"):
         try:
             async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client:
@@ -1533,6 +1535,8 @@ async def forward(body: dict, cand: tuple, endpoint_suffix: str | None):
                 data = anthropic_to_openai_response(data, model_id=model_id)
         if r.status_code >= 400 and isinstance(data, list) and data and isinstance(data[0], dict):
             data = data[0]  # Google APIs wrap errors in a list
+        if 200 <= r.status_code < 300:
+            record_stats(prov, model_id, est_input, estimate_output_tokens_from_json(data, fallback_text=r.text))
         if data is not None:
             return JSONResponse(content=data, status_code=r.status_code)
         return PlainTextResponse(r.text, status_code=r.status_code,
@@ -1542,6 +1546,7 @@ async def forward(body: dict, cand: tuple, endpoint_suffix: str | None):
         else _AnthropicStreamTranslator(model_id=model_id) if eff_type == "anthropic-messages" else None
 
     async def stream():
+        buffer, output_chars, succeeded = "", 0, False
         try:
             async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as client:
                 async with client.stream("POST", url, json=fwd_body, headers=headers) as r:
@@ -1550,11 +1555,17 @@ async def forward(body: dict, cand: tuple, endpoint_suffix: str | None):
                                          "type": "upstream_error", "code": r.status_code}}
                         yield f"data: {json.dumps(err)}\n\n".encode()
                         return
+                    succeeded = True
                     if translator is None:
                         async for chunk in r.aiter_bytes():
                             yield chunk
+                            buffer += chunk.decode("utf-8", errors="ignore")
+                            while "\n" in buffer:
+                                line, buffer = buffer.split("\n", 1)
+                                output_chars += _extract_sse_line_chars(line)
+                        if buffer:
+                            output_chars += _extract_sse_line_chars(buffer)
                         return
-                    buffer = ""
                     async for chunk in r.aiter_bytes():
                         buffer += chunk.decode("utf-8", errors="ignore")
                         while "\n" in buffer:
@@ -1566,11 +1577,169 @@ async def forward(body: dict, cand: tuple, endpoint_suffix: str | None):
                             yield out
                     for out in translator.finalize():
                         yield out
+                    output_chars = translator.output_chars
         except Exception as e:
             err = {"error": {"message": f"stream error from '{pname}': {e}", "type": "upstream_error"}}
             yield f"data: {json.dumps(err)}\n\n".encode()
+        finally:
+            if succeeded:
+                record_stats(prov, model_id, est_input, (output_chars + 3) // 4)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+# ---------- Routing statistics (in-memory: nothing is written to disk) ----------
+
+ESTIMATED_TOKENS_PER_IMAGE = 1000
+
+
+def _count_request_images(body: dict) -> int:
+    """Count total attached images across all messages in `body`."""
+    count = 0
+    messages = body.get("messages")
+    if isinstance(messages, list):
+        for m in messages:
+            if not isinstance(m, dict):
+                continue
+            content = m.get("content")
+            if isinstance(content, list):
+                for p in content:
+                    if _parse_image_part(p) is not None:
+                        count += 1
+            count += len(_extract_message_extra_images(m))
+    return count
+
+
+def estimate_input_tokens(body: dict) -> int:
+    """
+    Estimate input tokens from request characters using `ceil(chars / 4)`,
+    plus `ESTIMATED_TOKENS_PER_IMAGE` per attached image.
+    """
+    chars = 0
+    if "system" in body and body["system"] is not None:
+        chars += len(flatten_content(body["system"]))
+
+    messages = body.get("messages")
+    if isinstance(messages, list):
+        for m in messages:
+            if isinstance(m, dict):
+                chars += len(flatten_content(m.get("content")))
+                if m.get("tool_calls"):
+                    try:
+                        chars += len(json.dumps(m["tool_calls"]))
+                    except Exception:
+                        pass
+
+    if "prompt" in body and body["prompt"] is not None:
+        chars += len(flatten_content(body["prompt"]))
+
+    if "tools" in body and body["tools"]:
+        try:
+            chars += len(json.dumps(body["tools"]))
+        except Exception:
+            pass
+
+    image_count = _count_request_images(body)
+
+    if chars == 0 and image_count == 0:
+        try:
+            chars = len(json.dumps(body))
+        except Exception:
+            chars = 0
+
+    return ((chars + 3) // 4) + (image_count * ESTIMATED_TOKENS_PER_IMAGE)
+
+
+def estimate_output_tokens_from_json(data: Any, fallback_text: str = "") -> int:
+    """Estimate output tokens from non-streaming response payload using `ceil(chars / 4)`."""
+    chars = 0
+    if isinstance(data, dict):
+        choices = data.get("choices")
+        if isinstance(choices, list):
+            for c in choices:
+                if not isinstance(c, dict):
+                    continue
+                msg = c.get("message")
+                if isinstance(msg, dict):
+                    chars += len(flatten_content(msg.get("content")))
+                    chars += len(flatten_content(msg.get("reasoning_content")))
+                    if msg.get("tool_calls"):
+                        try:
+                            chars += len(json.dumps(msg["tool_calls"]))
+                        except Exception:
+                            pass
+                if isinstance(c.get("text"), str):
+                    chars += len(c["text"])
+        if "content" in data:
+            chars += len(flatten_content(data.get("content")))
+
+    if chars == 0 and fallback_text:
+        chars = len(fallback_text)
+
+    return (chars + 3) // 4
+
+
+def _extract_sse_line_chars(line: str) -> int:
+    """Extract completion character count from a single SSE `data:` line."""
+    s = line.strip()
+    if not s.startswith("data:"):
+        return 0
+    payload_str = s[5:].strip()
+    if not payload_str or payload_str == "[DONE]":
+        return 0
+    try:
+        obj = json.loads(payload_str)
+    except Exception:
+        return 0
+    if not isinstance(obj, dict):
+        return 0
+
+    chars = 0
+    choices = obj.get("choices")
+    if isinstance(choices, list):
+        for c in choices:
+            if not isinstance(c, dict):
+                continue
+            delta = c.get("delta")
+            if isinstance(delta, dict):
+                chars += len(flatten_content(delta.get("content")))
+                chars += len(flatten_content(delta.get("reasoning_content")))
+                if delta.get("tool_calls"):
+                    try:
+                        chars += len(json.dumps(delta["tool_calls"]))
+                    except Exception:
+                        pass
+            if isinstance(c.get("text"), str):
+                chars += len(c["text"])
+
+    delta = obj.get("delta")
+    if isinstance(delta, dict):
+        chars += len(flatten_content(delta.get("text")))
+        chars += len(flatten_content(delta.get("partial_json")))
+
+    content_block = obj.get("content_block")
+    if isinstance(content_block, dict):
+        chars += len(flatten_content(content_block.get("text")))
+
+    return chars
+
+
+STATS: dict[str, dict[str, int]] = {}
+
+
+def stats_key(prov: dict, model_id: str) -> str:
+    """Same composite key the deployed router and AutobotTab use: "provider / model"."""
+    return f"{prov['name']} / {model_id}" if prov.get("name") else model_id
+
+
+def record_stats(prov: dict, model_id: str, est_input_tokens: int, est_output_tokens: int) -> None:
+    # The deployed router skips Kev-fallback picks (they are not billed); here a fallback pick
+    # is still routed traffic, so every successful request is counted.
+    row = STATS.setdefault(stats_key(prov, model_id),
+                           {"requests": 0, "est_input_tokens": 0, "est_output_tokens": 0})
+    row["requests"] += 1
+    row["est_input_tokens"] += est_input_tokens
+    row["est_output_tokens"] += est_output_tokens
 
 
 # ---------- Config webui (GET/POST /config + static ui.html) ----------
@@ -1728,6 +1897,18 @@ async def put_config(request: Request):
     logger.info(f"[router] saved {CONFIG_PATH}: {len(cfg['providers'])} providers, "
                 f"{sum(len(p['models']) for p in cfg['providers'])} models")
     return {"ok": True, "config": mask_secrets(cfg)}
+
+
+@app.get("/stats")
+async def get_stats():
+    """Per-model routing counts for the webui table. Memory only: a restart clears it."""
+    return {"stats": STATS}
+
+
+@app.post("/stats/reset")
+async def reset_stats():
+    STATS.clear()
+    return {"ok": True, "stats": {}}
 
 
 # ---------- Routes ----------

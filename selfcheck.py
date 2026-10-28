@@ -248,11 +248,50 @@ data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"lookup","args
     assert chunks[-1]["choices"][0]["finish_reason"] == "tool_calls"
 
 
+def check_stats():
+    assert router.estimate_input_tokens({"messages": [{"role": "user", "content": "1234"}]}) == 1
+    big = {"system": "s" * 40, "messages": [{"role": "user", "content": "u" * 80}],
+           "tools": [{"type": "function", "function": {"name": "t"}}]}
+    tools_chars = len(json.dumps(big["tools"]))
+    assert router.estimate_input_tokens(big) == (40 + 80 + tools_chars + 3) // 4
+    img = {"messages": [{"role": "user", "content": [{"type": "text", "text": "1234"},
+                                                     {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA"}}]}]}
+    assert router.estimate_input_tokens(img) == 1 + router.ESTIMATED_TOKENS_PER_IMAGE
+
+    reply = {"choices": [{"message": {"role": "assistant", "content": "a" * 10,
+                                      "tool_calls": [{"id": "1", "function": {"name": "f", "arguments": "{}"}}]}}]}
+    assert router.estimate_output_tokens_from_json(reply) == (10 + len(json.dumps(reply["choices"][0]["message"]["tool_calls"])) + 3) // 4
+    assert router.estimate_output_tokens_from_json(None, fallback_text="a" * 40) == 10
+    assert router._extract_sse_line_chars('data: {"choices":[{"delta":{"content":"abcd"}}]}') == 4  # chars, not tokens
+    assert router._extract_sse_line_chars("data: [DONE]") == 0
+
+    router.STATS.clear()
+    router.record_stats({"name": "ollama"}, "m1", 10, 4)
+    router.record_stats({"name": "ollama"}, "m1", 10, 4)
+    router.record_stats({}, "solo", 1, 1)
+    assert router.STATS["ollama / m1"] == {"requests": 2, "est_input_tokens": 20, "est_output_tokens": 8}
+    assert router.STATS["solo"]["requests"] == 1
+
+
+async def check_stats_endpoints():
+    import httpx
+    router.STATS.clear()
+    router.record_stats({"name": "ollama"}, "m1", 10, 4)
+    transport = httpx.ASGITransport(app=router.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        got = (await client.get("/stats")).json()
+        assert got["stats"]["ollama / m1"]["requests"] == 1
+        cleared = (await client.post("/stats/reset")).json()
+        assert cleared["stats"] == {} and router.STATS == {}
+
+
 if __name__ == "__main__":
     check_state()
     check_candidates()
     check_url_resolution()
     check_adapters()
     check_config()
+    check_stats()
     asyncio.run(check_decision())
+    asyncio.run(check_stats_endpoints())
     print("selfcheck OK")
