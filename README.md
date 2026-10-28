@@ -1,8 +1,11 @@
 # local router (Jev-style model routing on Kev)
 
-Same routing idea as `2llamashare/server/autobot.py`, without Thinkfarm accounts,
-quotas, or the Postgres stats: one FastAPI app that asks Kev which of your models fits
-the request, then forwards the request to that provider.
+Same routing idea as [thinkfarm router](https://thinkfarm.eu/#/router), but fully local.
+
+Route requests automatically across ANY compatible inference providers using Typesafe Jev. Point your local tools to a single endpoint and let the router pick the best model for every turn.  
+
+The routing descriptions are fully customizable, and ready for testing.
+
 
 ```
 client -> POST /v1/chat/completions (model: "auto")
