@@ -97,6 +97,12 @@ def check_config():
     cleared = router.merge_config({**inc, "providers": [{**inc["providers"][0], "clear_api_key": True}]}, old)
     assert cleared["providers"][0]["api_key"] == ""
 
+    # a stored config with no per-provider id must still keep its key when the webui
+    # sends its own generated provider id
+    legacy = {"providers": [{"name": "p1", "base_url": "http://h1", "api_key": "sk-legacy", "models": []}]}
+    kept = router.merge_config({**inc, "providers": [{**inc["providers"][0], "id": "prov_12345"}]}, legacy)
+    assert kept["providers"][0]["api_key"] == "sk-legacy", kept["providers"][0]
+
     def cfg_with(**over):
         base = {"providers": [{"name": "a", "base_url": "http://h", "models": [{"model_id": "m", "description": "d"}]}],
                 "default_model": "m"}

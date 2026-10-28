@@ -18,12 +18,17 @@ pip install -r requirements.txt
 python3 router.py            # http://0.0.0.0:8010  (PORT env to change)
 ```
 
-Open `http://127.0.0.1:8010/` for the config webui (`ui.html`) — the AutobotTab settings
+Open `http://127.0.0.1:8010/` for the config webui (`ui.html` + `ui.css`) — the AutobotTab settings
 form without the account/quota parts: Kev URL + key, decision prompt, providers
 (name, api type, base URL, API key) and their models (model ID, weight, enabled,
 routing description), plus the default fallback model. Save writes `router.json` and
 routing picks the change up on the next request, no restart. Provider keys are write-only:
 `GET /config` returns `"••••••••••••last4"`, never the key.
+
+`ui.css` is the deployed look: the `:root` tokens from llamapage `src/index.css`
+(token subset) followed by `src/components/AutobotTab.css` copied verbatim — same
+class names, so the panels, accordions, switches and alerts render as they do on
+thinkfarm. Light theme only (the site's dark theme is not replicated).
 
 ## Point clients at it
 

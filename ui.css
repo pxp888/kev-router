@@ -1,0 +1,1249 @@
+/* =============================
+   local router webui — chrome copied from the deployed Thinkfarm Router tab:
+   the :root tokens from llamapage/frontend/src/index.css (subset) followed by
+   components/AutobotTab.css verbatim. Light ink palette, one teal hue for data.
+   ============================= */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-primary:      #fafafa;
+  --bg-secondary:    #ffffff;
+  --surface-alt:     #f2f3f4;
+  --text-primary:    #16161a;
+  --text-secondary:  #52525c;
+  --text-muted:      #85858f;
+  --white:           #ffffff;
+  --accent:          #548889;
+  --accent-deep:     #3f6b6c;
+  --accent-deeper:   #33595a;
+  --border-radius:   0;
+  --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-inter);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* =============================
+   AutobotTab — thinkfarm.eu Router settings
+   Ink chrome, one hue (brand teal) reserved for the data: the request package,
+   the on/off decision and the request-path drawing. Flat surfaces; the one raised element
+   is the router opt-in row (custom heavy shadow).
+   ============================= */
+
+.autobot-container {
+  /* scoped palette: the site's tokens, one level off each other */
+  --ab-ink: var(--text-primary);           /* #16161a */
+  --ab-body: #33333a;
+  --ab-grey: var(--text-secondary);        /* #52525c */
+  --ab-hair: #e3e3e4;                      /* whisper panel border, ≈1.15:1 on white */
+  --ab-line: #d3d4d5;                      /* control border and rules, ≈1.33:1 */
+  --ab-panel: var(--white);
+  --ab-well: var(--surface-alt);           /* #f2f3f4 */
+  --ab-hue: var(--accent-deep);            /* #3f6b6c, 5.9:1 on white */
+  --ab-hue-wash: rgba(84, 136, 137, 0.10);
+  --ab-on-ink: #04250e;
+  --ab-on-fill: #dcfae5;
+  --ab-bad-ink: #831c1e;
+  --ab-bad-fill: #ffedea;
+  --ab-bad-line: rgba(131, 28, 30, 0.24);
+  --ab-live: #068047;
+  --ab-live-ink: #9fe0b8;            /* green dot on the filled row */
+  --ab-off: #47474d;                 /* inactive row fill, white text = 8.4:1 */
+  --ab-slider-off: #6b6b72;          /* off track that still reads on the grey row */
+
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 40px 24px 72px;
+  animation: autobotFadeIn 0.4s ease-out;
+}
+
+@keyframes autobotFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Title row: noun, the finding in words, one text link ---------- */
+.autobot-title-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.autobot-title-row h1 {
+  font-size: 3.6rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--ab-ink);
+  margin: 0;
+}
+
+/* the finding is one step bigger than its label and never the page title's size */
+.autobot-finding {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ab-grey);
+  margin: 6px 0 0;
+  max-width: 62ch;
+}
+
+.autobot-how-it-works-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ab-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--ab-line);
+  padding-bottom: 2px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.autobot-how-it-works-link:hover {
+  color: var(--ab-hue);
+  border-color: var(--ab-hue);
+}
+
+.autobot-how-it-works-link:focus-visible {
+  outline: 2px solid var(--ab-ink);
+  outline-offset: 3px;
+}
+
+/* ---------- Toast ---------- */
+.autobot-alert {
+  position: fixed;
+  top: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 560px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  border: 1px solid;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);   /* taste-skill-ignore: toast overlay, not a card at rest */
+  animation: autobotAlertDrop 0.2s ease-out;
+}
+
+@keyframes autobotAlertDrop {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Exit pass: the JSX unmounts on animationend of autobotAlertFade */
+@keyframes autobotAlertFade {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to   { opacity: 0; transform: translate(-50%, -8px); }
+}
+
+.autobot-alert.closing {
+  animation: autobotAlertFade 0.3s ease-in forwards;
+  pointer-events: none;
+}
+
+/* The fade must still fire animationend, or the box never leaves the DOM */
+@media (prefers-reduced-motion: reduce) {
+  .autobot-alert,
+  .autobot-alert.closing {
+    animation-duration: 0.01s;
+  }
+}
+
+.autobot-alert.success {
+  background: var(--ab-on-fill);
+  border-color: rgba(4, 37, 14, 0.18);
+  color: var(--ab-on-ink);
+}
+
+.autobot-alert.error {
+  background: var(--ab-bad-fill);
+  border-color: var(--ab-bad-line);
+  color: var(--ab-bad-ink);
+}
+
+.autobot-alert-close {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ---------- Panels ---------- */
+.autobot-card {
+  background: var(--ab-panel);
+  border: 1px solid var(--ab-hair);
+}
+
+.autobot-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ab-hair);
+}
+
+.autobot-card-title-group h3 {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ab-ink);
+  margin: 0;
+}
+
+.autobot-card-title-group p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ab-grey);
+  margin: 4px 0 0;
+  max-width: 56ch;
+}
+
+.autobot-card-body {
+  padding: 20px;
+}
+
+/* ---------- The big block: what the paid package has left ---------- */
+.autobot-package {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  background: var(--ab-panel);
+  border: 1px solid var(--ab-hair);
+  margin-bottom: 32px;
+}
+
+.autobot-package-cell {
+  padding: 20px;
+  border-left: 1px solid var(--ab-hair);
+  min-width: 0;
+}
+
+.autobot-package-cell:first-child {
+  border-left: none;
+}
+
+.autobot-cell-label {
+  display: block;
+  font-size: 14px;
+  color: var(--ab-grey);
+}
+
+.autobot-cell-figure {
+  display: block;
+  font-size: 30px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--ab-ink);
+  margin-top: 6px;
+}
+
+.autobot-cell-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ab-ink);
+  margin-top: 6px;
+}
+
+.autobot-cell-note {
+  display: block;
+  font-size: 13px;
+  color: var(--ab-grey);
+  margin-top: 6px;
+}
+
+.autobot-cell-note.is-empty {
+  color: var(--ab-grey);
+}
+
+/* Package bar — one container, the fill at the true ratio, both ends labelled */
+.autobot-quota {
+  margin-top: 16px;
+}
+
+.autobot-quota-track {
+  position: relative;
+  height: 8px;
+  background: var(--ab-well);
+  border: 1px solid var(--ab-hair);
+  overflow: hidden;
+}
+
+.autobot-quota-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ab-hue);
+  transition: width 0.3s ease;
+}
+
+.autobot-quota-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ab-grey);
+}
+
+/* ---------- Request path: the drawing + the one endpoint ---------- */
+.autobot-network-anim {
+  width: 100%;
+  height: 360px;
+  padding: 16px 20px 16px;
+}
+
+.autobot-network-anim canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.autobot-flow-note {
+  padding: 12px 20px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ab-grey);
+  max-width: 72ch;
+}
+
+.autobot-endpoint {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--ab-line);
+  background: var(--ab-panel);
+  min-width: 0;
+}
+
+.autobot-endpoint-code {
+  font-family: monospace;   /* taste-skill-ignore: masked API key is literal text */
+  font-size: 13px;
+  color: var(--ab-ink);
+  padding: 9px 12px;
+  overflow-wrap: anywhere;
+}
+
+.autobot-endpoint-label {
+  font-size: 12px;
+  color: var(--ab-grey);
+  padding: 9px 0 9px 12px;
+  white-space: nowrap;
+}
+
+/* ---------- Settings rows: grey note on the left, the control on the right ---------- */
+.autobot-settings {
+  display: flex;
+  flex-direction: column;
+  margin-top: 32px;   /* clearly bigger than the 28px gap inside a row */
+}
+
+.autobot-setting-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+  gap: 40px;
+  align-items: center;   /* the label sits level with the control it describes */
+  padding: 24px 0;
+  /* border-top: 1px solid var(--ab-hair); */
+}
+
+.autobot-setting-row.stacked {
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.autobot-setting-row.stacked .autobot-setting-note {
+  position: static;
+}
+
+.autobot-setting-note {
+  position: sticky;          /* keeps the label visible beside the tall provider panel */
+  top: 24px;
+}
+
+.autobot-setting-note h3 {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ab-ink);
+  margin: 0;
+}
+
+.autobot-setting-note p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ab-grey);
+  margin: 4px 0 0;
+  max-width: 34ch;
+}
+
+.autobot-setting-note .autobot-count {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ab-grey);
+  font-variant-numeric: tabular-nums;
+}
+
+.autobot-row-panel {
+  padding: 20px;
+}
+
+/* Activation switch row: title, status, description, control on the right */
+.autobot-optin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  background: var(--ab-off);          /* inactive: dark grey + white text */
+  border: 1px solid var(--ab-off);
+  padding: 16px 20px;
+  min-height: 96px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12), 0 18px 38px rgba(0, 0, 0, 0.20);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.autobot-optin-row:has(input:checked) {
+  background: var(--ab-hue);
+  border-color: var(--ab-hue);
+}
+
+/* --ab-hue is the darker accent stop: white text on var(--accent) is only 3.6:1. */
+.autobot-optin-row .autobot-checkbox-text strong,
+.autobot-optin-row .autobot-checkbox-text span,
+.autobot-optin-row .autobot-status-badge {
+  color: var(--ab-panel);
+}
+
+.autobot-optin-row .autobot-status-badge::before {
+  background: var(--ab-panel);
+}
+
+.autobot-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.autobot-checkbox-text strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ab-ink);
+}
+
+.autobot-checkbox-text span {
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ab-grey);
+  margin-top: 2px;
+  max-width: 52ch;
+}
+
+.autobot-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ab-grey);
+  white-space: nowrap;
+}
+
+.autobot-status-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ab-grey);
+}
+
+.autobot-optin-row .autobot-status-badge.active {
+  color: var(--ab-live-ink);
+}
+
+.autobot-optin-row .autobot-status-badge.active::before {
+  background: var(--ab-live-ink);
+}
+
+/* ---------- Fields ---------- */
+.autobot-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 20px;
+}
+
+.autobot-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.autobot-field.full-width,
+.autobot-provider-remove {
+  grid-column: 1 / -1;
+}
+
+.autobot-field label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ab-ink);
+}
+
+.autobot-field input,
+.autobot-field select,
+.autobot-field textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--ab-line);
+  background: var(--ab-panel);
+  color: var(--ab-ink);
+  font-family: var(--font-inter);
+  font-size: 14px;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.autobot-field input:hover,
+.autobot-field select:hover {
+  border-color: #b8b8b8;
+}
+
+.autobot-field input:focus,
+.autobot-field select:focus,
+.autobot-field textarea:focus {
+  outline: none;
+  border-color: var(--ab-ink);
+  box-shadow: 0 0 0 2px rgba(22, 22, 26, 0.14);   /* taste-skill-ignore: focus ring, not depth */
+}
+
+.autobot-field textarea {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.55;
+}
+
+.autobot-field-hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ab-grey);
+}
+
+.autobot-field-error {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ab-bad-ink);
+}
+
+.autobot-field-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.autobot-field-header label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ab-ink);
+}
+
+.autobot-char-count {
+  font-size: 12px;
+  color: var(--ab-grey);
+  font-variant-numeric: tabular-nums;
+}
+
+.autobot-decision-prompt-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ab-grey);
+}
+
+/* Preset chips: white fill + 1px border, the one primary elsewhere is near-black */
+.autobot-desc-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.autobot-presets-label {
+  font-size: 12px;
+  color: var(--ab-grey);
+}
+
+/* ---------- Providers ---------- */
+.autobot-providers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.autobot-provider-card {
+  /* background: var(--ab-panel); */
+  background: var(--ab-well);
+  border: 1px solid var(--ab-hair);
+  padding: 16px 20px;
+}
+
+.autobot-provider-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  /* border-bottom: 1px solid var(--ab-hair); */
+}
+
+/* provider name is a row title, not a landing-page headline */
+.autobot-provider-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 2.6rem;
+  font-weight: 600;
+  /* color: var(--ab-ink); */
+  color: gray;
+  margin: 0;
+  min-width: 0;
+}
+
+.autobot-accordion-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 8px 10px;
+  margin-left: -10px;
+  min-height: 40px;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.autobot-accordion-trigger:hover {
+  color: var(--ab-hue);
+  background: var(--ab-hue-wash);
+}
+
+.autobot-accordion-trigger:focus-visible {
+  outline: 2px solid var(--ab-ink);
+  outline-offset: 2px;
+}
+
+.autobot-accordion-chevron {
+  flex-shrink: 0;
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+
+.autobot-provider-card.expanded .autobot-accordion-chevron {
+  transform: rotate(0deg);
+}
+
+.autobot-accordion {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.autobot-accordion.open {
+  grid-template-rows: 1fr;
+}
+
+.autobot-accordion-body {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ---------- Models ---------- */
+.autobot-models-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  /* border-top: 1px solid var(--ab-hair); */
+}
+
+.autobot-models-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.autobot-models-header h5 {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ab-grey);
+  margin: 0;
+}
+
+.autobot-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.autobot-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 96px auto;
+  gap: 12px 24px;
+  align-items: start;
+  padding: 12px 16px;
+  background: var(--ab-well);
+  /* border: 1px solid var(--ab-hair); */
+  transition: border-color 0.15s ease;
+}
+
+.autobot-model-row.disabled-model {
+  opacity: 0.55;
+}
+
+.autobot-toggle-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.autobot-col-label {
+  font-size: 12px;
+  color: var(--ab-grey);
+}
+
+.autobot-control-slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 36px;
+}
+
+
+/* Switch: off knob on grey, on knob in the decision hue */
+.autobot-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+}
+
+.autobot-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.autobot-slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: var(--ab-well);
+  border: 1px solid var(--ab-line);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.autobot-slider::before {
+  position: absolute;
+  content: "";
+  box-sizing: border-box;   /* * doesn't match pseudo-elements: without this the 1px border makes the knob 18px, so bottom:2px pushed it against the top edge */
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--ab-panel);
+  border: 1px solid var(--ab-line);
+  transition: transform 0.2s ease;
+}
+
+.autobot-switch input:checked + .autobot-slider {
+  background: var(--ab-hue);
+  border-color: var(--ab-hue);
+}
+
+.autobot-switch input:checked + .autobot-slider::before {
+  transform: translateX(18px);
+  border-color: var(--ab-hue);
+}
+
+.autobot-switch input:focus-visible + .autobot-slider {
+  outline: 2px solid var(--ab-ink);
+  outline-offset: 2px;
+}
+
+/* Inverted switch inside the filled opt-in row: white track / hue knob */
+.autobot-optin-row .autobot-slider {
+  background: var(--ab-slider-off);
+  border-color: var(--ab-panel);
+}
+
+.autobot-optin-row .autobot-slider::before {
+  border-color: var(--ab-panel);
+}
+
+.autobot-optin-row .autobot-switch input:checked + .autobot-slider {
+  background: var(--ab-panel);
+  border-color: var(--ab-panel);
+}
+
+.autobot-optin-row .autobot-switch input:checked + .autobot-slider::before {
+  background: var(--ab-hue);
+  border-color: var(--ab-hue);
+}
+
+.autobot-optin-row .autobot-switch input:focus-visible + .autobot-slider {
+  outline-color: var(--ab-panel);
+}
+
+/* ---------- API key ---------- */
+.autobot-apikey-wrapper {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.autobot-apikey-masked {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 12px;
+  background: var(--ab-well);
+  border: 1px solid var(--ab-line);
+  font-family: monospace;   /* taste-skill-ignore: a literal URL */
+  font-size: 13px;
+  color: var(--ab-ink);
+  overflow-wrap: anywhere;
+}
+
+.autobot-masked-badge {
+  font-family: var(--font-inter);
+  font-size: 12px;
+  color: var(--ab-on-ink);
+  background: var(--ab-on-fill);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+/* ---------- Buttons: one near-black primary per view ---------- */
+.autobot-btn {
+  min-height: 38px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--font-inter);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.autobot-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.autobot-btn.primary {
+  background: var(--ab-ink);
+  color: #ffffff;
+  border-color: var(--ab-ink);
+}
+
+.autobot-btn.primary:hover:not(:disabled) {
+  background: #000000;
+}
+
+.autobot-btn.outline {
+  background: var(--ab-panel);
+  color: var(--ab-ink);
+  border-color: var(--ab-line);
+}
+
+.autobot-btn.outline:hover:not(:disabled) {
+  background: #f7f7f7;
+  border-color: #b8b8b8;
+}
+
+/* the screen's only primary control is the one hue — Save */
+.autobot-btn.primary.is-hue {
+  background: var(--ab-hue);
+  border-color: var(--ab-hue);
+}
+
+.autobot-btn.primary.is-hue:hover:not(:disabled) {
+  background: var(--accent-deeper);
+}
+
+.autobot-btn.small {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.autobot-btn.danger-ghost {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: none;
+  color: var(--ab-bad-ink);
+  border-color: var(--ab-bad-line);
+}
+
+.autobot-btn.danger-ghost:hover:not(:disabled) {
+  background: var(--ab-bad-fill);
+}
+
+.autobot-btn:focus-visible {
+  outline: 2px solid var(--ab-ink);
+  outline-offset: 2px;
+}
+
+.autobot-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid var(--ab-hair);
+}
+
+.autobot-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 20px 0 0;
+  border-top: 1px solid var(--ab-hair);
+}
+
+.autobot-save-hint {
+  font-size: 13px;
+  color: var(--ab-grey);
+}
+
+.autobot-add-provider {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ab-hair);
+}
+
+.autobot-empty-state {
+  padding: 20px;
+  text-align: center;
+  color: var(--ab-grey);
+  font-size: 14px;
+  line-height: 1.55;
+  background: var(--ab-well);
+  border: 1px dashed var(--ab-line);
+}
+
+.autobot-empty-state strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ab-ink);
+  margin-bottom: 4px;
+}
+
+/* ---------- Routing statistics ---------- */
+.autobot-stats-section {
+  margin-top: 32px;
+  text-align: left;
+  background: var(--ab-panel);
+  border: 1px solid var(--ab-hair);
+  color: var(--ab-body);
+}
+
+.autobot-stats-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ab-hair);
+}
+
+.autobot-stats-topbar-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.autobot-stats-topbar-title h2 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ab-ink);
+  margin: 0;
+}
+
+.autobot-stats-topbar-sub {
+  font-size: 13px;
+  color: var(--ab-grey);
+}
+
+.autobot-stats-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.autobot-stats-confirm p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ab-bad-ink);
+  margin: 0;
+  max-width: 34ch;
+}
+
+.autobot-stats-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.autobot-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.autobot-stats-table th,
+.autobot-stats-table td {
+  padding: 10px 20px;
+  text-align: left;
+  border-bottom: 1px solid var(--ab-hair);
+}
+
+.autobot-stats-table th {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ab-grey);
+  white-space: nowrap;
+}
+
+.autobot-stats-table th.num,
+.autobot-stats-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the requests column carries the data */
+.autobot-stats-table tbody tr > td:nth-child(2) {
+  color: var(--ab-ink);
+  font-weight: 500;
+}
+
+.autobot-stats-table tbody tr:hover {
+  background: #f7f7f7;
+}
+
+.autobot-stats-table tfoot th,
+.autobot-stats-table tfoot td {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ab-ink);
+  border-bottom: none;
+}
+
+.autobot-stats-model-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.autobot-stats-model-name {
+  font-weight: 500;
+  color: var(--ab-ink);
+  font-family: monospace;   /* taste-skill-ignore: model ids are literal */
+  font-size: 13px;
+}
+
+.autobot-stats-provider-tag {
+  font-size: 12px;
+  color: var(--ab-grey);
+}
+
+.autobot-stats-empty-row td {
+  text-align: left;
+  color: var(--ab-grey);
+  padding: 20px;
+  font-size: 14px;
+}
+
+/* ---------- Phone ---------- */
+@media (max-width: 860px) {
+  .autobot-container {
+    padding: 24px 16px 56px;
+  }
+
+  .autobot-title-row {
+    align-items: flex-start;
+  }
+
+  .autobot-package {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .autobot-package-cell {
+    border-left: none;
+    border-top: 1px solid var(--ab-hair);
+  }
+
+  .autobot-package-cell:first-child,
+  .autobot-package-cell:nth-child(2) {
+    border-top: none;
+  }
+
+  .autobot-package-cell:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .autobot-setting-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .autobot-setting-note {
+    position: static;
+  }
+
+  .autobot-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .autobot-model-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .autobot-model-row .autobot-field.full-width {
+    grid-column: 1 / -1;
+  }
+
+  .autobot-toggle-group {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .autobot-control-slot {
+    min-height: 0;
+  }
+
+  .autobot-network-anim {
+    height: 234px;
+    padding: 12px 16px 12px;
+  }
+
+  .autobot-card-header,
+  .autobot-card-body,
+  .autobot-row-panel,
+  .autobot-provider-card {
+    padding: 16px;
+  }
+
+  .autobot-stats-table th,
+  .autobot-stats-table td {
+    padding: 10px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .autobot-stats-table thead {
+    display: none;
+  }
+
+  .autobot-stats-table tbody tr,
+  .autobot-stats-table tfoot tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ab-hair);
+  }
+
+  .autobot-stats-table td,
+  .autobot-stats-table tfoot th {
+    border: none;
+    padding: 0;
+  }
+
+  .autobot-stats-table td:first-child,
+  .autobot-stats-table tfoot th {
+    grid-column: 1 / -1;
+  }
+
+  .autobot-stats-table td.num {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    text-align: right;   /* digits stay right-aligned even stacked */
+  }
+
+  .autobot-stats-table td.num::before {
+    content: attr(data-label);
+    font-size: 12px;
+    color: var(--ab-grey);
+  }
+
+  .autobot-package {
+    grid-template-columns: 1fr;
+  }
+
+  .autobot-package-cell {
+    border-top: 1px solid var(--ab-hair);
+  }
+
+  .autobot-package-cell:first-child {
+    grid-column: auto;
+    border-top: none;
+  }
+
+  .autobot-model-row {
+    grid-template-columns: 1fr;
+  }
+}

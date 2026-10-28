@@ -37,6 +37,7 @@ KEV_TIMEOUT = float(os.environ.get("KEV_TIMEOUT_SECS", "15"))
 UPSTREAM_TIMEOUT = httpx.Timeout(float(os.environ.get("UPSTREAM_TIMEOUT_SECS", "300")), connect=15.0)
 CONFIG_PATH = os.environ.get("ROUTER_CONFIG", os.path.join(os.path.dirname(__file__), "router.json"))
 UI_PATH = os.path.join(os.path.dirname(__file__), "ui.html")
+UI_CSS_PATH = os.path.join(os.path.dirname(__file__), "ui.css")
 DEFAULT_DECISION_PROMPT = "Which model is best suited for this request?"
 
 app = FastAPI(title="local router")
@@ -331,8 +332,9 @@ def merge_config(inc: dict, old: dict) -> dict:
     Normalize the webui payload into stored config. api_key: null keeps the stored key
     (the browser never sees it), "" with clear_api_key removes it, text replaces it.
     """
-    old_keys = {str(p.get("id") if p.get("id") is not None else i): (p.get("api_key") or "").strip()
-                for i, p in enumerate(old.get("providers") or [])}
+    by_id = {str(p["id"]): (p.get("api_key") or "").strip() for p in old.get("providers") or [] if p.get("id") is not None}
+    # stored configs may predate the webui and have no per-provider id: index is the fallback
+    by_index = {str(i): (p.get("api_key") or "").strip() for i, p in enumerate(old.get("providers") or [])}
     providers = []
     for i, p in enumerate(inc.get("providers") or []):
         if not isinstance(p, dict):
@@ -343,7 +345,7 @@ def merge_config(inc: dict, old: dict) -> dict:
         elif p.get("api_key"):
             key = str(p["api_key"]).strip()
         else:
-            key = old_keys.get(str(p.get("id") if p.get("id") is not None else i), "")
+            key = by_id.get(str(p["id"]), by_index.get(str(i), "")) if p.get("id") is not None else by_index[str(i)]
         models = []
         for m in p.get("models") or []:
             if not isinstance(m, dict):
@@ -382,6 +384,11 @@ def merge_config(inc: dict, old: dict) -> dict:
 @app.get("/")
 async def webui():
     return FileResponse(UI_PATH, media_type="text/html")
+
+
+@app.get("/ui.css")
+async def webui_css():
+    return FileResponse(UI_CSS_PATH, media_type="text/css")
 
 
 @app.get("/config")

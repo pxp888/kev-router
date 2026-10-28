@@ -1,39 +1,42 @@
 {
   "kev_url": "http://192.168.0.189:8008",
   "kev_api_key": "hellothere",
-  "default_model": "llama3.1-8b",
+  "default_model": "qwen3.6:35b-a3b-ud-q4_k_m",
   "decision_prompt": "Which model is best suited for this request?",
   "providers": [
     {
-      "name": "ollama",
-      "base_url": "http://192.168.0.189:11434/v1",
+      "id": "prov_1",
+      "name": "thinkfarm",
+      "base_url": "https://app.thinkfarm.eu",
       "api_type": "openai-completions",
-      "api_key": "",
+      "api_key": "8b4d68ce-82f6-4583-8718-7e21a0703f43",
       "models": [
         {
-          "model_id": "llama3.1-8b",
-          "description": "Small fast general chat model: quick summaries, rewrites, simple classification and formatting",
+          "id": "model_1_0",
+          "model_id": "qwen3.8:27b-ud-q4_k_m",
+          "description": "Complex multi-step reasoning, architecture design, and hard debugging",
+          "weight": 1.0,
+          "enabled": false
+        },
+        {
+          "id": "model_1793224146248_m8zwv",
+          "model_id": "nemotron-3.5:30b-a3b-nvfp4",
+          "description": "general conversation. simple work and easy edits.",
+          "weight": 1.0,
+          "enabled": false
+        },
+        {
+          "id": "model_1793224164433_y36be",
+          "model_id": "qwen3.8-flash-next-iq3_xxs",
+          "description": "coding and tool calling tasks.  System design decisions, architecture. intelligent consideration.",
           "weight": 1.0,
           "enabled": true
         },
         {
-          "model_id": "qwen2.5-coder-32b",
-          "description": "Code generation, refactoring, unit tests, and inline code completions",
-          "weight": 1.2,
-          "enabled": true
-        }
-      ]
-    },
-    {
-      "name": "llamacpp",
-      "base_url": "http://127.0.0.1:8080/v1",
-      "api_type": "openai-completions",
-      "api_key": "",
-      "models": [
-        {
-          "model_id": "deepseek-r1-14b",
-          "description": "Complex multi-step reasoning, architecture design, and hard debugging",
-          "weight": 0.9,
+          "id": "model_1793224388633_v8axy",
+          "model_id": "qwen3.6:35b-a3b-ud-q4_k_m",
+          "description": "general conversation. simple work and easy edits.",
+          "weight": 1.0,
           "enabled": true
         }
       ]
