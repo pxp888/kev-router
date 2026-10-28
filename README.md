@@ -4,7 +4,12 @@ Same routing idea as [thinkfarm router](https://thinkfarm.eu/#/router), but full
 
 Route requests automatically across ANY compatible inference providers using Typesafe Jev. Point your local tools to a single endpoint and let the router pick the best model for every turn.  
 
+Clients have to use the openAI API, but upstream providers can use openAI API, google, or anthropic's API.  
+
 The routing descriptions are fully customizable, and ready for testing.
+
+There are defaults for one __Smart__ model, and one __Fast__ model, but you are free to use any model descriptor you'd like.  
+
 
 
 ```
